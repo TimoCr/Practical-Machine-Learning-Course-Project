@@ -1,0 +1,92 @@
+---
+title: Practical Machine Learning Course Project
+output: 
+  html_document: 
+  pdf_document: default
+  keep_md: yes 
+---
+## Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely **quantify how well** they do it. This project will use data from accelerometers on the belt, forearm, arm, and dumbell of **6 participants**. They were asked to perform **barbell lifts** correctly and incorrectly in **5 different ways** (**A:** exactly according to the specification, **B:** throwing the elbows to the front, **C:** lifting the dumbbell only halfway, **D:** lowering the dumbbell only halfway, **E:** throwing the hips to the front)
+The goal of this project is to **predict the manner in which they did the exercise**. This is the **"classe" variable** in the training set. The final **prediction model** is also used to **predict 20 different test cases.** 
+
+The dataset used in this project comes from: *Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.* More information could be found at: http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises
+
+## Load needed libaries and data
+Before starting the workingdirection is set and the needed libaries and the two datasets are loaded.
+```{r, echo=TRUE}
+rm(list=ls())
+setwd("C:/Users/Timo/Desktop/Prog/Coursera/Practical Machine Learning/Woche 4/Datasets")
+```
+
+```{r, echo=TRUE}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(lattice)
+library(ggplot2)
+library(kernlab)
+library(rattle)
+```
+
+```{r, echo=TRUE}
+pmltrain<-read.csv("pml-training.csv")
+pmltest<-read.csv("pml-testing.csv")
+dim(pmltrain)
+```
+As one can see above the training dataset contains **19622 observations of 160 variables.**
+
+## Clean the data
+In a first step the **metadata** (first seven variables) is removed because it is irrelevant to the later outcome. After this the variables with **variance near zero** are removed because there is very little information in them. Finally in the third cleaningstep the variables with **mostly NA** values are removed because they are also unnecessary.
+```{r, echo=TRUE}
+pmltrainclean<-pmltrain[,-c(1:7)] # Removing metadata variables
+nearzerovariance<-nearZeroVar(pmltrainclean)
+pmltrainclean2<-pmltrainclean[,-nearzerovariance] # Removing near zero variance variables
+pmltrainclean3<-pmltrainclean2[,colMeans(is.na(pmltrainclean2))<.9] # Removing almost NA variables
+dim(pmltrainclean3)
+```
+After the data cleaning the training dataset contains **19622 observations of 53 variables.**
+For predicting classes in the real testing dataset, the training dataset is splitted into **70% training** and **30% testing** partitions. The real testing dataset itself is left untouched and used as validation sample for the 20 test cases.
+```{r, echo=TRUE}
+set.seed(130621)
+pmltrainall<-createDataPartition(pmltrainclean3$classe,p=0.70,list=F)
+pmlsubtrain<-pmltrainclean3[pmltrainall,]
+pmlvalidationtrain<-pmltrainclean3[-pmltrainall,] 
+```
+## Build models
+To improve the model fit and then do an out-of-sample test with the testing partition a cross validation within the training partition of the trainingset is used.
+```{r, echo=TRUE}
+crossvalidation<-trainControl(method="cv",number=3,verboseIter=F) # 3-fold crossvalidation
+```
+To make a prediction ones could choose between different models. For this project a **random forest model** is build because it seems to be better than a single decision tree. As a model to compare with a **support vector machine model** is build.
+```{r, echo=TRUE}
+randomforestmodel<-train(classe~.,data=pmlsubtrain,method="rf",trControl=crossvalidation,tuneLength=5) # Fitting Random Forest Model
+randomforestmodel$finalModel
+```
+
+```{r, echo=TRUE}
+supportvectormachinemodel<-train(classe~.,data=pmlsubtrain,method="svmLinear",trControl=crossvalidation,tuneLength=5, verbose=F) # Fitting Support Vector Machine Model
+supportvectormachinemodel
+```
+## Evaluate models
+To evaluate which modeltype is better a confusionmatrix is build after predicting on the testing partition of the training dataset.
+```{r, echo=TRUE}
+randomforestprediction<-predict(randomforestmodel,pmlvalidationtrain) #Predicting classe in testdata of trainingset
+randomforestconfusionmatrix<-confusionMatrix(randomforestprediction,factor(pmlvalidationtrain$classe)) # Estimate out-of-sample error
+randomforestconfusionmatrix
+```
+The **accuracy** of the **random forest model** is **99,41%**. Thus the out-of-sample error is 0,059%.
+```{r, echo=TRUE}
+supportvectormachineprediction<-predict(supportvectormachinemodel,pmlvalidationtrain) #Predicting classe in testdata of trainingset
+supportvectorconfusionmatrix<-confusionMatrix(supportvectormachineprediction,factor(pmlvalidationtrain$classe)) #Estimate out-of-sample error
+supportvectorconfusionmatrix
+```
+The **accuracy** of the **support vector machine model** is **77,99%**. Thus the out-of-sample error is 22,01%.
+
+## Prediction on the testdata
+Based on the model evaluation before the **random forest model** seems to be **better** for predicting on the real testing data.
+```{r, echo=TRUE}
+testdataprediction<-predict(randomforestmodel,pmltest) # Predicting classe in real testdata
+testdataprediction
+```
